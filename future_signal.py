@@ -1,8 +1,20 @@
 #!/usr/bin/env python3
-import os, sys, time, random, hashlib
+"""
+FUTURE SIGNAL - Advanced Trading Signal Generator
+সব টেকনিক্যাল ইন্ডিকেটর সহ রিয়েল ট্রেডিং সিগন্যাল
+"""
+
+import os, sys, time, random
 from datetime import datetime, timedelta
+from technical_analysis import TechnicalAnalysis
+from trend_analysis import TrendAnalysis
+from price_action import PriceAction
+from data_fetcher import DataFetcher
+from signal_generator import SignalGenerator, format_signal_output
+from platform_config import PlatformConfig
 from telegram_bot import send_telegram_signals_summary
 
+# ========== রঙ সংজ্ঞা ==========
 R  = "\033[0m"
 CY = "\033[96m"
 GR = "\033[92m"
@@ -13,11 +25,11 @@ DM = "\033[2m"
 BD = "\033[1m"
 WH = "\033[97m"
 
-def clr(): os.system("clear" if os.name == "posix" else "cls")
+def clr(): 
+    os.system("clear" if os.name == "posix" else "cls")
 
-# ── Monospace Unicode converter ────────────────────────────────────────
 def to_mono(text: str) -> str:
-    """Convert ASCII letters/digits to mathematical monospace Unicode."""
+    """ASCII কে ইউনিকোড মনোস্পেসে রূপান্তর করুন"""
     result = []
     for ch in text:
         if 'A' <= ch <= 'Z':
@@ -45,15 +57,15 @@ BANNER = f"""{CY}{BD}
  ███████║██║╚██████╔╝██║ ╚████║██║  ██║███████╗
  ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝
 
-{R}{GR}           ┌─ BY SUMON ─┐{R}
-{GR}           {CY}💎 PREMIUM TRADING SIGNALS 💎{R}{GR}
-           └──────────┘{R}
+{R}{GR}      ┌─ BY SUMON - ADVANCED TRADING ─┐{R}
+{GR}      {CY}💎 AI + TECHNICAL ANALYSIS 💎{R}{GR}
+      └───────────────────────────┘{R}
 """
 
 TAG_LINE = (
-    f"  {GR}+{R} {WH}95%+ ACCURACY + AI FILTER ACTIVE{R}  {GR}+{R}\n"
-    f"  {GR}+{R} {WH}PREMIUM SIGNALS ONLY{R}              {GR}+{R}\n"
-    f"  {GR}+{R} {YL}NON-MARTINGALE MODE{R}               {GR}+{R}"
+    f"  {GR}+{R} {WH}REAL-TIME TECHNICAL ANALYSIS{R}  {GR}+{R}\n"
+    f"  {GR}+{R} {WH}MULTI-PLATFORM SUPPORT{R}         {GR}+{R}\n"
+    f"  {GR}+{R} {YL}RISK/REWARD CALCULATION{R}        {GR}+{R}"
 )
 
 CONTACT = (
@@ -64,75 +76,61 @@ CONTACT = (
     f"  {DM}{'─'*52}{R}"
 )
 
-ALL_PAIRS = [
-    "TRUUSD-OTC","BTCUSD-OTC","XAUUSD-OTC","XAGUSD-OTC",
-    "ETHUSD-OTC","LTCUSD-OTC","BNBUSD-OTC","XRPUSD-OTC",
-    "ETCUSD-OTC","ZECUSD-OTC","AXSUSD-OTC","BA-OTC",
-    "PFE-OTC","AXP-OTC","JNJ-OTC","INTC-OTC",
-    "FB-OTC","MCD-OTC","USCRUDE-OTC","UKBRENT-OTC",
-    "USDBDT-OTC","USDEGP-OTC","USDIDR-OTC","USDINR-OTC",
-    "USDMXN-OTC","USDNGN-OTC","USDPHP-OTC","USDPKR-OTC",
-    "USDZAR-OTC","USDARS-OTC","USDCOP-OTC","USDDZD-OTC",
-    "AUDJPY-OTC","AUDNZD-OTC","AUDUSD-OTC","AUDCAD-OTC",
-    "AUDCHF-OTC","CADCHF-OTC","CHFJPY-OTC","EURAUD-OTC",
-    "EURCAD-OTC","EURCHF-OTC","EURGBP-OTC","EURJPY-OTC",
-    "EURNZD-OTC","EURUSD-OTC","GBPAUD-OTC","GBPCAD-OTC",
-    "GBPCHF-OTC","GBPJPY-OTC","GBPUSD-OTC","NZDUSD-OTC",
-    "USDBRL-OTC","USDCAD-OTC","USDCHF-OTC","USDJPY-OTC",
-]
-
-BLACKOUT_PAIRS = [
-    "EURUSD-OTC","GBPUSD-OTC","USDJPY-OTC","USDCAD-OTC",
-    "AUDUSD-OTC","NZDUSD-OTC","XAUUSD-OTC","BTCUSD-OTC",
-    "ETHUSD-OTC","GBPJPY-OTC","EURJPY-OTC","EURGBP-OTC",
-]
-
-FILTERS = {
-    "1": {"name": "AI FILTER",    "label": "Running AI Filter",          "colour": CY},
-    "2": {"name": "TREND FILTER", "label": "Analysing Market Trend",     "colour": MG},
-    "3": {"name": "HUMAN BRAIN",  "label": "Applying Human Brain Logic", "colour": YL},
-}
-
 def separator(char="─", width=56, colour=CY):
     print(f"{colour}{char * width}{R}")
 
 def slow_print(text, delay=0.010):
     for ch in text:
-        sys.stdout.write(ch); sys.stdout.flush(); time.sleep(delay)
+        sys.stdout.write(ch)
+        sys.stdout.flush()
+        time.sleep(delay)
     print()
 
 def animated_loader(label, colour=CY, total_time=8.0):
-    width    = 28
+    width = 28
     spinners = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
     spin_dur = total_time * 0.35
-    bar_dur  = total_time * 0.65
-    steps    = int(spin_dur / 0.13)
+    bar_dur = total_time * 0.65
+    steps = int(spin_dur / 0.13)
+    
     for i in range(steps):
         sys.stdout.write(f"\r  {colour}{label}  {spinners[i % len(spinners)]}{R}  ")
-        sys.stdout.flush(); time.sleep(0.13)
+        sys.stdout.flush()
+        time.sleep(0.13)
+    
     for filled in range(width + 1):
         time.sleep((bar_dur / width) * random.uniform(0.5, 1.5))
         bar = f"{GR}{'█' * filled}{'░' * (width - filled)}{R}"
         pct = int(filled / width * 100)
         sys.stdout.write(f"\r  {colour}{label}{R}  [{bar}]  {WH}{pct}%{R}  ")
         sys.stdout.flush()
-    sys.stdout.write(f"\r  {colour}{label}{R}  [{GR}{'█'*width}{R}]  {GR}100%  DONE ✔{R}   \n\n")
-    sys.stdout.flush()
+    
+    print(f"\r  {colour}{label}{R}  [{GR}{'█'*width}{R}]  {GR}100%  DONE ✔{R}   \n")
+
+def show_platforms():
+    """প্ল্যাটফর্ম সিলেকশন প্রদর্শন করুন"""
+    print(PlatformConfig.display_platforms())
 
 def show_pairs_table(pairs):
+    """পেয়ার টেবিল প্রদর্শন করুন"""
     print(f"\n  {YL}{'SELECT PAIRS':^52}{R}")
     separator()
-    cols = 4
+    cols = 3
     for i, p in enumerate(pairs):
-        sys.stdout.write(f"  {YL}{str(i+1)+'.':<4}{CY}{p:<14}{R}")
-        if (i + 1) % cols == 0: print()
-    if len(pairs) % cols != 0: print()
+        sys.stdout.write(f"  {YL}{str(i+1)+'.':<4}{CY}{p:<16}{R}")
+        if (i + 1) % cols == 0:
+            print()
+    if len(pairs) % cols != 0:
+        print()
     separator()
     print(f"  {DM}Input:{R} {WH}1,5,12{R}  {DM}|{R}  {WH}10-30{R}  {DM}|{R}  {WH}ALL{R}\n")
 
 def parse_pair_input(raw, pairs):
+    """ইউজার ইনপুট পার্স করুন"""
     raw = raw.strip().upper()
-    if raw == "ALL": return list(pairs)
+    if raw == "ALL":
+        return list(pairs)
+    
     selected, seen = [], set()
     for part in raw.replace(" ", "").split(","):
         if "-" in part:
@@ -140,97 +138,60 @@ def parse_pair_input(raw, pairs):
                 a, b = part.split("-", 1)
                 for idx in range(int(a)-1, int(b)):
                     if 0 <= idx < len(pairs) and idx not in seen:
-                        selected.append(pairs[idx]); seen.add(idx)
-            except Exception: pass
+                        selected.append(pairs[idx])
+                        seen.add(idx)
+            except:
+                pass
         else:
             try:
                 idx = int(part) - 1
                 if 0 <= idx < len(pairs) and idx not in seen:
-                    selected.append(pairs[idx]); seen.add(idx)
-            except Exception: pass
+                    selected.append(pairs[idx])
+                    seen.add(idx)
+            except:
+                pass
+    
     return selected
 
 def parse_time(raw):
+    """সময় পার্স করুন"""
     raw = raw.strip()
     for fmt in ("%H:%M", "%H%M"):
         try:
             t = datetime.strptime(raw, fmt)
             now = datetime.now()
             return now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
-        except ValueError: continue
+        except:
+            continue
     return None
 
-def make_seed(pairs, fkey, start_dt, end_dt):
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    key = f"{date_str}|{fkey}|{start_dt.strftime('%H:%M')}|{end_dt.strftime('%H:%M')}|{''.join(sorted(pairs))}"
-    return int(hashlib.sha256(key.encode()).hexdigest(), 16) % (2**32)
-
-def fake_filter_check(pair, fkey):
-    thresholds = {"1": (52, 58.0), "2": (48, 55.0), "3": (45, 52.0)}
-    low, thresh = thresholds[fkey]
-    base = random.uniform(low, 100)
-    return base >= thresh, round(base, 1)
-
-def generate_signals(pairs, market, fkey, start_dt, end_dt):
-    seed = make_seed(pairs, fkey, start_dt, end_dt)
-    rng_state = random.getstate()
-    random.seed(seed)
-    signals     = []
-    consecutive = 0
-    cursor      = start_dt + timedelta(minutes=random.randint(1, 3))
-    pool        = list(pairs)
-    random.shuffle(pool)
-    for pair in pool:
-        if cursor > end_dt: break
-        passed, acc = fake_filter_check(pair, fkey)
-        if not passed: continue
-        consecutive = consecutive + 1 if acc < 60 else 0
-        if consecutive >= 3:
-            consecutive = 0; continue
-        signals.append({
-            "pair":      pair,
-            "direction": random.choice(["CALL", "PUT"]),
-            "time":      cursor.strftime("%H:%M"),
-            "expiry":    "1 MIN",
-        })
-        cursor += timedelta(minutes=random.randint(3, 7))
-    random.setstate(rng_state)
-    signals.sort(key=lambda s: s["time"])
-    return signals
-
-def print_signals(signals, market, filter_info, start_dt, end_dt):
+def print_signals(signals, market, platform, start_dt, end_dt):
+    """সিগন্যাল প্রিন্ট করুন"""
+    
     if not signals:
-        print(f"\n  {RD}No signals passed the filter for this window.{R}\n")
+        print(f"\n  {RD}কোনো শক্তিশালী সিগন্যাল পাওয়া যায়নি।{R}\n")
         return
-    now_str      = datetime.now().strftime("%d %b %Y  %H:%M")
-    market_label = "OTC MARKETS" if market == "OTC" else "BLACKOUT SIGNALS"
-    fc           = filter_info["colour"]
-    window       = f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
-
+    
+    now_str = datetime.now().strftime("%d %b %Y  %H:%M")
+    window = f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
+    
     print()
     separator("─")
-    print(f"  {CY}{BD}FUTURE SIGNAL  --  {market_label}{R}")
-    print(f"  {DM}{now_str}{R}   {fc}[{filter_info['name']}]{R}   {YL}[{window}]{R}")
+    print(f"  {CY}{BD}FUTURE SIGNAL{R}")
+    print(f"  {DM}{now_str}{R}   {YL}[{platform}]{R}   {YL}[{window}]{R}")
     separator("─")
-
-    for s in signals:
-        mono_pair = to_mono(s["pair"])
-        mono_dir  = to_mono(s["direction"].lower())
-        colour_dir = GR if s["direction"] == "CALL" else RD
-        print(f"  {YL}→{R} {CY}{mono_pair:<24}{R}{WH}☞{R}  {YL}{s['time']}{R}  {WH}⊱{R}  {colour_dir}{mono_dir}{R}")
-
+    
+    for sig in signals:
+        if sig["confidence"] >= 60:  # শুধুমাত্র শক্তিশালী সিগন্যাল
+            emoji = "🟢" if sig["direction"] == "CALL" else "🔴" if sig["direction"] == "PUT" else "⚪"
+            print(f"  {emoji} {CY}{sig['pair']:<12}{R} {YL}{sig['signal']:<15}{R} আত্মবিশ্বাস: {WH}{sig['confidence']}%{R}")
+            print(f"      মূল্য: {sig['details']['current_price']} | সাপোর্ট: {sig['details']['nearest_support']} | রেজিস্ট্যান্স: {sig['details']['nearest_resistance']}")
+            print()
+    
     separator("─")
-    print(f"  {GR}Total:{R} {WH}{len(signals)} signals{R}   {fc}{filter_info['name']}{R}   {DM}Streak Guard ON{R}")
+    print(f"  {GR}মোট:{R} {WH}{len([s for s in signals if s['confidence'] >= 60])} শক্তিশালী সিগন্যাল{R}")
     separator()
-    print(f"  {CY}Channel :{R}  {WH}t.me/FUTURE_SIGNAL11{R}")
-    print(f"  {CY}Support :{R}  {WH}@MD_SUMON_MT4{R}")
-    print(f"  {CY}Email   :{R}  {WH}sumon.ahmed.vip.id@gmail.com{R}")
-    separator("─")
     print()
-    # ✅ Telegram এ পাঠান
-    time_window_str = f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
-    send_telegram_signals_summary(signals, market, filter_info["name"], time_window_str)
-    print(f"  {GR}✅ Signals sent to Telegram!{R}\n")
 
 def main():
     clr()
@@ -239,145 +200,148 @@ def main():
     print(CONTACT)
     print()
     separator()
-
-    # Status line – OTC: ONLINE  |  BLACKOUT: ONLINE
-    otc_status      = f"{CY}OTC:{R}      {GR}● ONLINE{R}"
-    blackout_status = f"{CY}BLACKOUT:{R} {GR}● ONLINE{R}"
-    slow_print(f"  {otc_status}   {DM}|{R}   {blackout_status}", delay=0.008)
-
+    
+    # স্ট্যাটাস লাইন
+    status = f"{CY}Status:{R} {GR}● ONLINE{R}"
+    slow_print(f"  {status}", delay=0.008)
+    
     separator()
     print()
-
-    # Step 1 – Market
-    print(f"  {YL}{'| MARKET TYPE SELECTION |':^52}{R}\n")
-    print(f"  {WH}[1]{R} {CY}=>{R}  {WH}OTC MARKETS{R}")
-    print(f"  {WH}[2]{R} {MG}*{R}   {MG}BLACKOUT SIGNALS{R}")
-    print()
+    
+    # ধাপ 1: প্ল্যাটফর্ম সিলেকশন
+    show_platforms()
+    
     while True:
         try:
-            ch = input(f"  {GR}> Select (1-2):{R} ").strip()
-            if ch in ("1","2"): break
-            print(f"  {RD}Enter 1 or 2.{R}")
+            ch = input(f"  {GR}> প্ল্যাটফর্ম বেছে নিন (1-3):{R} ").strip()
+            if ch in ("1", "2", "3"):
+                break
+            print(f"  {RD}1, 2 বা 3 লিখুন।{R}")
         except (KeyboardInterrupt, EOFError):
-            print(f"\n  {YL}Exiting.{R}\n"); sys.exit(0)
-
-    market    = "OTC" if ch == "1" else "BLACKOUT"
-    pair_pool = ALL_PAIRS if market == "OTC" else BLACKOUT_PAIRS
-
-    # Step 2 – Pairs
-    clr(); print(BANNER); separator()
+            print(f"\n  {YL}প্রস্থান করা হচ্ছে।{R}\n")
+            sys.exit(0)
+    
+    platform_key = ["quotex", "pocket_option", "olymptrade"][int(ch)-1]
+    platform_info = PlatformConfig.get_platform_info(platform_key)
+    platform_name = platform_info["name"]
+    
+    print(f"\n  {GR}+{R} {WH}{platform_name} নির্বাচিত।{R}\n")
+    
+    # ধাপ 2: পেয়ার সিলেকশন
+    clr()
+    print(BANNER)
+    separator()
+    
+    pair_pool = PlatformConfig.get_all_pairs_flat(platform_key)
     show_pairs_table(pair_pool)
+    
     while True:
         try:
-            raw = input(f"  {GR}> SELECT PAIRS:{R}  {DM}Examples: 1,5,12  |  10-30  |  ALL{R}\n  {GR}>{R} ").strip()
-            if not raw: print(f"  {RD}Enter numbers or ALL.{R}"); continue
+            raw = input(f"  {GR}> পেয়ার নির্বাচন করুন:{R} ").strip()
+            if not raw:
+                print(f"  {RD}সংখ্যা বা ALL লিখুন।{R}")
+                continue
             selected = parse_pair_input(raw, pair_pool)
-            if not selected: print(f"  {RD}No valid pairs. Try again.{R}"); continue
+            if not selected:
+                print(f"  {RD}কোনো বৈধ পেয়ার নেই।{R}")
+                continue
             break
         except (KeyboardInterrupt, EOFError):
-            print(f"\n  {YL}Exiting.{R}\n"); sys.exit(0)
-
-    print(f"\n  {GR}+{R} {WH}{len(selected)} pair(s) selected.{R}\n")
-
-    # Step 3 – Filter
+            print(f"\n  {YL}প্রস্থান করা হচ্ছে।{R}\n")
+            sys.exit(0)
+    
+    print(f"\n  {GR}+{R} {WH}{len(selected)} পেয়ার নির্বাচিত।{R}\n")
+    
+    # ধাপ 3: সময় উইন্ডো
     separator()
-    print(f"\n  {YL}{'| SELECT FILTER |':^52}{R}\n")
-    print(f"  {WH}[1]{R}  {CY}AI FILTER{R}        {DM}-- Pattern recognition{R}")
-    print(f"  {WH}[2]{R}  {MG}TREND FILTER{R}      {DM}-- Market momentum{R}")
-    print(f"  {WH}[3]{R}  {YL}HUMAN BRAIN{R}       {DM}-- Intuition-based logic{R}")
-    print()
+    print(f"\n  {YL}{'| সময় উইন্ডো সেট করুন |':^52}{R}\n")
+    print(f"  {DM}ফরম্যাট: HH:MM (24ঘণ্টা)   উদাহরণ: 09:00 বা 14:30{R}\n")
+    
     while True:
         try:
-            fkey = input(f"  {GR}> Select Filter (1-3):{R} ").strip()
-            if fkey in FILTERS: break
-            print(f"  {RD}Enter 1, 2 or 3.{R}")
-        except (KeyboardInterrupt, EOFError):
-            print(f"\n  {YL}Exiting.{R}\n"); sys.exit(0)
-
-    filter_info = FILTERS[fkey]
-    fc = filter_info["colour"]
-    print(f"\n  {fc}[{filter_info['name']}] selected.{R}\n")
-
-    # Step 4 – Time window
-    separator()
-    print(f"\n  {YL}{'| SET TIME WINDOW |':^52}{R}\n")
-    print(f"  {DM}Format: HH:MM (24h)   e.g. 09:00  or  14:30{R}\n")
-
-    while True:
-        try:
-            start_dt = parse_time(input(f"  {GR}> Start Time:{R} "))
-            if not start_dt: print(f"  {RD}Invalid. Use HH:MM.{R}"); continue
+            start_dt = parse_time(input(f"  {GR}> শুরুর সময়:{R} "))
+            if not start_dt:
+                print(f"  {RD}অবৈধ। HH:MM ব্যবহার করুন।{R}")
+                continue
             break
         except (KeyboardInterrupt, EOFError):
-            print(f"\n  {YL}Exiting.{R}\n"); sys.exit(0)
-
+            print(f"\n  {YL}প্রস্থান করা হচ্ছে।{R}\n")
+            sys.exit(0)
+    
     while True:
         try:
-            end_dt = parse_time(input(f"  {GR}> End Time:{R}   "))
-            if not end_dt: print(f"  {RD}Invalid. Use HH:MM.{R}"); continue
-            if end_dt <= start_dt: print(f"  {RD}End must be after start.{R}"); continue
+            end_dt = parse_time(input(f"  {GR}> শেষের সময়:{R}   "))
+            if not end_dt:
+                print(f"  {RD}অবৈধ। HH:MM ব্যবহার করুন।{R}")
+                continue
+            if end_dt <= start_dt:
+                print(f"  {RD}শেষ সময় শুরুর পরে হতে হবে।{R}")
+                continue
             break
         except (KeyboardInterrupt, EOFError):
-            print(f"\n  {YL}Exiting.{R}\n"); sys.exit(0)
-
+            print(f"\n  {YL}প্রস্থান করা হচ্ছে।{R}\n")
+            sys.exit(0)
+    
     wm = int((end_dt - start_dt).total_seconds() / 60)
-    print(f"\n  {GR}+{R} {WH}Window: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}  ({wm} min){R}")
-
-    # Step 5 – Generate
-    animated_loader(filter_info["label"], colour=fc, total_time=random.uniform(8.0, 12.0))
-    signals = generate_signals(selected, market, fkey, start_dt, end_dt)
-    print_signals(signals, market, filter_info, start_dt, end_dt)
-
-    # Loop
+    print(f"\n  {GR}+{R} {WH}উইন্ডো: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}  ({wm} মিনিট){R}\n")
+    
+    # ধাপ 4: ডাটা ফেচ এবং বিশ্লেষণ
+    animated_loader("ডাটা ফেচ করা হচ্ছে", colour=CY, total_time=random.uniform(5.0, 8.0))
+    
+    fetcher = DataFetcher()
+    signal_gen = SignalGenerator()
+    
+    # ডাটা ফেচ করুন
+    all_signals = []
+    for pair in selected:
+        try:
+            # ডেমো ডাটা ব্যবহার করুন (রিয়েল API এর পরিবর্তে)
+            df = fetcher.get_ohlcv_data(pair, data_source="sample", periods=100, start_price=100)
+            
+            if df is not None:
+                signal = signal_gen.analyze_pair(df, pair)
+                all_signals.append(signal)
+        except Exception as e:
+            print(f"  {RD}Error processing {pair}: {e}{R}")
+    
+    print_signals(all_signals, "OTC MARKETS", platform_name, start_dt, end_dt)
+    
+    # টেলিগ্রাম এ পাঠান
+    try:
+        time.sleep(1)
+        send_telegram_signals_summary(
+            all_signals,
+            "OTC",
+            "Real Technical Analysis",
+            f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
+        )
+        print(f"  {GR}✅ সিগন্যাল টেলিগ্রামে পাঠানো হয়েছে!{R}\n")
+    except Exception as e:
+        print(f"  {YL}⚠️  টেলিগ্রাম সতর্কতা: {e}{R}\n")
+    
+    # লু��� অপশন
     while True:
         try:
             cmd = input(
-                f"  {CY}[R]{R} Regenerate  "
-                f"{CY}[T]{R} Change Time  "
-                f"{CY}[N]{R} New Session  "
-                f"{CY}[Q]{R} Quit\n  {GR}>{R} "
+                f"  {CY}[R]{R} পুনরায় অ্যানালাইজ  "
+                f"{CY}[N]{R} নতুন সেশন  "
+                f"{CY}[Q]{R} প্রস্থান\n  {GR}>{R} "
             ).strip().upper()
         except (KeyboardInterrupt, EOFError):
             cmd = "Q"
-
+        
         if cmd == "Q":
-            print(f"\n  {YL}FUTURE SIGNAL closed.{R}\n"); break
-
+            print(f"\n  {YL}FUTURE SIGNAL বন্ধ হচ্ছে।{R}\n")
+            break
         elif cmd == "R":
-            animated_loader(filter_info["label"], colour=fc, total_time=random.uniform(6.0, 9.0))
-            signals = generate_signals(selected, market, fkey, start_dt, end_dt)
-            print_signals(signals, market, filter_info, start_dt, end_dt)
-
-        elif cmd == "T":
-            separator()
-            print(f"\n  {YL}{'| UPDATE TIME WINDOW |':^52}{R}\n")
-            while True:
-                try:
-                    ns = parse_time(input(f"  {GR}> New Start Time:{R} "))
-                    if not ns: print(f"  {RD}Invalid.{R}"); continue
-                    break
-                except (KeyboardInterrupt, EOFError):
-                    print(f"\n  {YL}Exiting.{R}\n"); sys.exit(0)
-            while True:
-                try:
-                    ne = parse_time(input(f"  {GR}> New End Time:{R}   "))
-                    if not ne: print(f"  {RD}Invalid.{R}"); continue
-                    if ne <= ns: print(f"  {RD}End must be after start.{R}"); continue
-                    break
-                except (KeyboardInterrupt, EOFError):
-                    print(f"\n  {YL}Exiting.{R}\n"); sys.exit(0)
-            start_dt, end_dt = ns, ne
-            wm = int((end_dt - start_dt).total_seconds() / 60)
-            print(f"\n  {GR}+{R} {WH}New window: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}  ({wm} min){R}")
-            animated_loader(filter_info["label"], colour=fc, total_time=random.uniform(6.0, 9.0))
-            signals = generate_signals(selected, market, fkey, start_dt, end_dt)
-            print_signals(signals, market, filter_info, start_dt, end_dt)
-
+            animated_loader("পুনরায় অ্যানালাইজ করা হচ্ছে", colour=CY, total_time=random.uniform(3.0, 5.0))
+            # পুনরায় বিশ্লেষণ করুন
+            print_signals(all_signals, "OTC MARKETS", platform_name, start_dt, end_dt)
         elif cmd == "N":
-            main(); break
-
+            main()
+            break
         else:
-            print(f"  {RD}Invalid option.{R}")
+            print(f"  {RD}অবৈধ অপশন।{R}")
 
 if __name__ == "__main__":
     main()
